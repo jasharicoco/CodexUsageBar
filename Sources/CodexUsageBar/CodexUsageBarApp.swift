@@ -1,0 +1,381 @@
+import AppKit
+import SwiftUI
+import CodexUsageCore
+
+@main
+struct CodexUsageBarApp: App {
+    @StateObject private var model = UsageModel()
+    private let language = CodexUsageLanguage.preferred()
+
+    var body: some Scene {
+        MenuBarExtra {
+            UsagePanel(model: model, language: language)
+        } label: {
+            Text(model.menuBarText)
+                .monospacedDigit()
+                .onAppear {
+                    model.start()
+                }
+        }
+        .menuBarExtraStyle(.window)
+    }
+}
+
+private struct UsagePanel: View {
+    @ObservedObject var model: UsageModel
+    let language: CodexUsageLanguage
+
+    private var strings: AppStrings {
+        AppStrings(language: language)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 10) {
+                CodexMark()
+                    .frame(width: 24, height: 24)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Codex")
+                        .font(.headline)
+                    Text(strings.weeklyLimit)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                if model.isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+
+            if let snapshot = model.snapshot {
+                usageContent(snapshot)
+            } else if let connectionIssue = model.connectionIssue {
+                issueContent(connectionIssue)
+            } else {
+                loadingContent
+            }
+
+            if let connectionIssue = model.connectionIssue, model.snapshot != nil {
+                Label(strings.issueMessage(connectionIssue), systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Divider()
+
+            HStack {
+                Button {
+                    model.refresh()
+                } label: {
+                    Label(strings.refresh, systemImage: "arrow.clockwise")
+                }
+                .disabled(model.isLoading)
+
+                Spacer()
+
+                Button(strings.openCodex) {
+                    openCodex()
+                }
+
+                Button(strings.quit) {
+                    NSApplication.shared.terminate(nil)
+                }
+            }
+            .buttonStyle(.borderless)
+            .font(.caption)
+        }
+        .padding(16)
+        .frame(width: 340)
+    }
+
+    @ViewBuilder
+    private func usageContent(_ snapshot: UsageSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Text("\(snapshot.remainingPercent)")
+                    .font(.system(size: 40, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                Text(strings.remainingSuffix)
+                    .font(.title3.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+
+            ProgressView(value: Double(snapshot.remainingPercent), total: 100)
+                .tint(progressColor(snapshot.remainingPercent))
+
+            HStack {
+                Text(strings.used(snapshot.usedPercent))
+                Spacer()
+                if let resetsAt = snapshot.resetsAt {
+                    Text(strings.resets(resetDate(resetsAt)))
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            Text(strings.updated(updatedTime(snapshot.fetchedAt)))
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    @ViewBuilder
+    private func issueContent(_ issue: UsageConnectionIssue) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(strings.issueTitle(issue), systemImage: issueIcon(issue))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.orange)
+            Text(strings.issueMessage(issue))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                switch issue {
+                case .codexMissing:
+                    Button(strings.getCodex) {
+                        openCodexWebsite()
+                    }
+                case .signInRequired:
+                    Button(strings.openCodex) {
+                        openCodex()
+                    }
+                    Button(strings.copyCodexLogin) {
+                        copyToPasteboard("codex login")
+                    }
+                case .chatGPTAccountRequired:
+                    Button(strings.openCodex) {
+                        openCodex()
+                    }
+                    Button(strings.copySignInSteps) {
+                        copyToPasteboard("codex logout && codex login")
+                    }
+                case .unsupportedAccount, .generic:
+                    Button(strings.tryAgain) {
+                        model.refresh()
+                    }
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .padding(.top, 4)
+        }
+    }
+
+    private func issueIcon(_ issue: UsageConnectionIssue) -> String {
+        switch issue {
+        case .codexMissing:
+            return "square.and.arrow.down"
+        case .signInRequired, .chatGPTAccountRequired:
+            return "person.crop.circle.badge.exclamationmark"
+        case .unsupportedAccount, .generic:
+            return "exclamationmark.triangle.fill"
+        }
+    }
+
+    private var loadingContent: some View {
+        HStack(spacing: 10) {
+            ProgressView()
+                .controlSize(.small)
+            Text(strings.readingUsage)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 12)
+    }
+
+    private func progressColor(_ remainingPercent: Int) -> Color {
+        switch remainingPercent {
+        case 50...:
+            return .green
+        case 20..<50:
+            return .orange
+        default:
+            return .red
+        }
+    }
+
+    private func resetDate(_ date: Date) -> String {
+        date.formatted(
+            Date.FormatStyle()
+                .weekday(.abbreviated)
+                .day()
+                .month(.abbreviated)
+                .hour()
+                .minute()
+                .locale(language.locale)
+        )
+    }
+
+    private func updatedTime(_ date: Date) -> String {
+        date.formatted(
+            Date.FormatStyle()
+                .hour()
+                .minute()
+                .locale(language.locale)
+        )
+    }
+
+    private func openCodex() {
+        if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex") {
+            NSWorkspace.shared.openApplication(
+                at: appURL,
+                configuration: NSWorkspace.OpenConfiguration()
+            )
+        } else {
+            openCodexWebsite()
+        }
+    }
+
+    private func openCodexWebsite() {
+        if let webURL = URL(string: "https://chatgpt.com/codex") {
+            NSWorkspace.shared.open(webURL)
+        }
+    }
+
+    private func copyToPasteboard(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+}
+
+private struct AppStrings {
+    let language: CodexUsageLanguage
+
+    var weeklyLimit: String {
+        text("Veckogräns", "Weekly limit")
+    }
+
+    var refresh: String {
+        text("Uppdatera", "Refresh")
+    }
+
+    var openCodex: String {
+        text("Öppna Codex", "Open Codex")
+    }
+
+    var quit: String {
+        text("Avsluta", "Quit")
+    }
+
+    var remainingSuffix: String {
+        text("% kvar", "% left")
+    }
+
+    var getCodex: String {
+        text("Hämta Codex", "Get Codex")
+    }
+
+    var copyCodexLogin: String {
+        text("Kopiera codex login", "Copy codex login")
+    }
+
+    var copySignInSteps: String {
+        text("Kopiera inloggningssteg", "Copy sign-in steps")
+    }
+
+    var tryAgain: String {
+        text("Försök igen", "Try again")
+    }
+
+    var readingUsage: String {
+        text("Läser användning från Codex…", "Reading usage from Codex…")
+    }
+
+    func used(_ percent: Int) -> String {
+        text("\(percent)% använt", "\(percent)% used")
+    }
+
+    func resets(_ date: String) -> String {
+        text("Återställs \(date)", "Resets \(date)")
+    }
+
+    func updated(_ time: String) -> String {
+        text("Uppdaterad \(time)", "Updated \(time)")
+    }
+
+    func issueTitle(_ issue: UsageConnectionIssue) -> String {
+        switch issue {
+        case .codexMissing:
+            return text("Codex behöver installeras", "Codex needs to be installed")
+        case .signInRequired:
+            return text("Logga in med ChatGPT", "Sign in with ChatGPT")
+        case .chatGPTAccountRequired:
+            return text("ChatGPT-inloggning krävs", "ChatGPT sign-in required")
+        case .unsupportedAccount:
+            return text("Kontot stöds inte", "Account not supported")
+        case .generic:
+            return text("Kunde inte läsa användningen", "Could not read usage")
+        }
+    }
+
+    func issueMessage(_ issue: UsageConnectionIssue) -> String {
+        switch issue {
+        case .codexMissing:
+            return text(
+                "Installera Codex Desktop eller Codex CLI på den här datorn.",
+                "Install Codex Desktop or Codex CLI on this Mac."
+            )
+        case .signInRequired:
+            return text(
+                "Logga in med ChatGPT i Codex. Appen använder sedan samma lokala konto automatiskt.",
+                "Sign in with ChatGPT in Codex. The app will then use the same local account automatically."
+            )
+        case .chatGPTAccountRequired:
+            return text(
+                "Du är inloggad med en API-nyckel. Byt till ChatGPT-inloggning för att läsa prenumerationens veckogräns.",
+                "You are signed in with an API key. Switch to ChatGPT sign-in to read your subscription's weekly limit."
+            )
+        case .unsupportedAccount:
+            return text(
+                "Det aktiva Codex-kontot rapporterar ingen veckogräns som appen kan visa.",
+                "The active Codex account does not report a weekly limit that the app can display."
+            )
+        case .generic(let message):
+            return message
+        }
+    }
+
+    private func text(_ swedish: String, _ english: String) -> String {
+        language.text(swedish: swedish, english: english)
+    }
+}
+
+private struct CodexMark: View {
+    var body: some View {
+        Image(nsImage: OfficialCodexMark.image)
+            .resizable()
+            .renderingMode(.template)
+            .aspectRatio(contentMode: .fit)
+            .accessibilityHidden(true)
+    }
+}
+
+private enum OfficialCodexMark {
+    static let image: NSImage = {
+        let bundledURL = Bundle.main.url(
+            forResource: "OpenAIBlossom@2x",
+            withExtension: "png"
+        )
+        let installedURL = URL(
+            fileURLWithPath: "/Applications/ChatGPT.app/Contents/Resources/chatgptTemplate@2x.png"
+        )
+
+        let image = [bundledURL, installedURL]
+            .compactMap { $0 }
+            .compactMap(NSImage.init(contentsOf:))
+            .first
+            ?? NSImage(systemSymbolName: "command", accessibilityDescription: "Codex")
+            ?? NSImage(size: NSSize(width: 18, height: 18))
+
+        image.size = NSSize(width: 18, height: 18)
+        image.isTemplate = true
+        return image
+    }()
+}

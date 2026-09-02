@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Run parser checks
+        run: swift run ParserChecks
+
+      - name: Build universal app
+        run: ./Scripts/build-app.sh
+
+      - name: Verify bundle
+        run: |
+          executable="dist/CodexUsageBar.app/Contents/MacOS/CodexUsageBar"
+          architectures="$(lipo -archs "$executable")"
+          [[ "$architectures" == *arm64* ]]
+          [[ "$architectures" == *x86_64* ]]
+          codesign --verify --deep --strict dist/CodexUsageBar.app
+          plutil -lint dist/CodexUsageBar.app/Contents/Info.plist
