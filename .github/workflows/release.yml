@@ -108,10 +108,10 @@ jobs:
         env:
           VERSION: ${{ steps.release.outputs.version }}
           BUILD_NUMBER: ${{ github.run_number }}
-          SIGNING_IDENTITY: ${{ secrets.DEVELOPER_ID_APPLICATION }}
+          SIGNING_IDENTITY: ${{ steps.signing.outputs.mode == 'notarized' && secrets.DEVELOPER_ID_APPLICATION || '-' }}
         run: ./Scripts/build-app.sh
 
-      - name: Notarize and package
+      - name: Package release
         env:
           REQUIRE_NOTARIZATION: ${{ steps.signing.outputs.require_notarization }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
