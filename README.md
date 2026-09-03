@@ -8,6 +8,8 @@ It automatically uses the ChatGPT account already signed in to Codex on your Mac
 
 The interface follows your Mac's preferred language: Swedish when the primary language is Swedish, otherwise English.
 
+Available earned resets and their expiration are shown in the app and can be used after confirmation.
+
 > Independent open-source project. Not affiliated with or endorsed by OpenAI.
 
 ## Install

@@ -24,6 +24,8 @@ struct CodexUsageBarApp: App {
 private struct UsagePanel: View {
     @ObservedObject var model: UsageModel
     let language: CodexUsageLanguage
+    @State private var isShowingResetConfirmation = false
+    @State private var selectedResetCreditID: String?
 
     private var strings: AppStrings {
         AppStrings(language: language)
@@ -45,7 +47,7 @@ private struct UsagePanel: View {
 
                 Spacer()
 
-                if model.isLoading {
+                if model.isBusy {
                     ProgressView()
                         .controlSize(.small)
                 }
@@ -74,7 +76,7 @@ private struct UsagePanel: View {
                 } label: {
                     Label(strings.refresh, systemImage: "arrow.clockwise")
                 }
-                .disabled(model.isLoading)
+                .disabled(model.isBusy)
 
                 Spacer()
 
@@ -91,6 +93,14 @@ private struct UsagePanel: View {
         }
         .padding(16)
         .frame(width: 340)
+        .alert(strings.confirmResetTitle, isPresented: $isShowingResetConfirmation) {
+            Button(strings.cancel, role: .cancel) {}
+            Button(strings.useReset, role: .destructive) {
+                model.consumeReset(creditId: selectedResetCreditID)
+            }
+        } message: {
+            Text(strings.confirmResetMessage)
+        }
     }
 
     @ViewBuilder
@@ -118,9 +128,83 @@ private struct UsagePanel: View {
             .font(.caption)
             .foregroundStyle(.secondary)
 
+            if let resetCredits = snapshot.resetCredits, resetCredits.availableCount > 0 {
+                resetCreditsContent(resetCredits)
+            }
+
+            if let resetNotice = model.resetNotice {
+                resetNoticeContent(resetNotice)
+            }
+
             Text(strings.updated(updatedTime(snapshot.fetchedAt)))
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
+        }
+    }
+
+    private func resetCreditsContent(_ resetCredits: UsageResetCredits) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.counterclockwise.circle.fill")
+                .font(.title3)
+                .foregroundStyle(.blue)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(strings.resetAvailable(resetCredits.availableCount))
+                    .font(.caption.weight(.semibold))
+
+                if let expiresAt = resetCredits.nextCredit?.expiresAt {
+                    Text(strings.resetExpires(expirationDate(expiresAt), count: resetCredits.availableCount))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer(minLength: 6)
+
+            Button {
+                selectedResetCreditID = resetCredits.nextCredit?.id
+                isShowingResetConfirmation = true
+            } label: {
+                if model.isConsumingReset {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Text(strings.useReset)
+                }
+            }
+            .disabled(model.isBusy)
+            .controlSize(.small)
+        }
+        .padding(10)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func resetNoticeContent(_ notice: UsageResetNotice) -> some View {
+        Label(strings.resetNotice(notice), systemImage: resetNoticeIcon(notice))
+            .font(.caption)
+            .foregroundStyle(resetNoticeColor(notice))
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func resetNoticeIcon(_ notice: UsageResetNotice) -> String {
+        switch notice {
+        case .reset, .alreadyRedeemed:
+            return "checkmark.circle.fill"
+        case .nothingToReset, .noCredit, .unknown:
+            return "info.circle.fill"
+        case .failure:
+            return "exclamationmark.triangle.fill"
+        }
+    }
+
+    private func resetNoticeColor(_ notice: UsageResetNotice) -> Color {
+        switch notice {
+        case .reset, .alreadyRedeemed:
+            return .green
+        case .nothingToReset, .noCredit, .unknown:
+            return .secondary
+        case .failure:
+            return .orange
         }
     }
 
@@ -222,6 +306,17 @@ private struct UsagePanel: View {
         )
     }
 
+    private func expirationDate(_ date: Date) -> String {
+        date.formatted(
+            Date.FormatStyle()
+                .day()
+                .month(.abbreviated)
+                .hour()
+                .minute()
+                .locale(language.locale)
+        )
+    }
+
     private func openCodex() {
         if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex") {
             NSWorkspace.shared.openApplication(
@@ -284,6 +379,25 @@ private struct AppStrings {
         text("Försök igen", "Try again")
     }
 
+    var useReset: String {
+        text("Använd", "Use")
+    }
+
+    var cancel: String {
+        text("Avbryt", "Cancel")
+    }
+
+    var confirmResetTitle: String {
+        text("Använd återställningen?", "Use this reset?")
+    }
+
+    var confirmResetMessage: String {
+        text(
+            "Detta förbrukar en återställning och återställer direkt de Codex-gränser som är berättigade. Åtgärden kan inte ångras.",
+            "This consumes one reset and immediately resets the eligible Codex limits. This action cannot be undone."
+        )
+    }
+
     var readingUsage: String {
         text("Läser användning från Codex…", "Reading usage from Codex…")
     }
@@ -298,6 +412,55 @@ private struct AppStrings {
 
     func updated(_ time: String) -> String {
         text("Uppdaterad \(time)", "Updated \(time)")
+    }
+
+    func resetAvailable(_ count: Int) -> String {
+        if count == 1 {
+            return text("1 återställning tillgänglig", "1 reset available")
+        }
+        return text("\(count) återställningar tillgängliga", "\(count) resets available")
+    }
+
+    func resetExpires(_ date: String, count: Int) -> String {
+        if count == 1 {
+            return text("Går ut \(date)", "Expires \(date)")
+        }
+        return text("Närmaste går ut \(date)", "Next expires \(date)")
+    }
+
+    func resetNotice(_ notice: UsageResetNotice) -> String {
+        switch notice {
+        case .reset:
+            return text(
+                "Återställningen användes. Gränserna är uppdaterade.",
+                "The reset was used. Your limits are up to date."
+            )
+        case .alreadyRedeemed:
+            return text(
+                "Återställningen var redan använd. Gränserna är uppdaterade.",
+                "The reset had already been used. Your limits are up to date."
+            )
+        case .nothingToReset:
+            return text(
+                "Ingen användningsgräns kan återställas just nu.",
+                "No usage limit can be reset right now."
+            )
+        case .noCredit:
+            return text(
+                "Det finns ingen återställning kvar att använda.",
+                "There are no resets left to use."
+            )
+        case .unknown(let value):
+            return text(
+                "Codex returnerade resultatet: \(value)",
+                "Codex returned the result: \(value)"
+            )
+        case .failure(let message):
+            return text(
+                "Kunde inte använda återställningen: \(message)",
+                "The reset could not be used: \(message)"
+            )
+        }
     }
 
     func issueTitle(_ issue: UsageConnectionIssue) -> String {

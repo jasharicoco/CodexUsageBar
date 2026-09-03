@@ -60,17 +60,52 @@ public final class CodexUsageClient {
     public init() {}
 
     public func fetch() async throws -> UsageSnapshot {
+        let response = try await perform(.readUsage)
+        guard case .usage(let snapshot) = response else {
+            throw UsageParsingError.invalidResponse
+        }
+        return snapshot
+    }
+
+    public func consumeReset(
+        creditId: String?,
+        idempotencyKey: UUID = UUID()
+    ) async throws -> UsageResetOutcome {
+        let response = try await perform(
+            .consumeReset(
+                creditId: creditId,
+                idempotencyKey: idempotencyKey.uuidString
+            )
+        )
+        guard case .reset(let outcome) = response else {
+            throw UsageResetParsingError.invalidResponse
+        }
+        return outcome
+    }
+
+    private func perform(_ operation: AppServerOperation) async throws -> AppServerResponse {
         guard let executableURL = CodexExecutable.locate() else {
             throw CodexUsageClientError.executableNotFound
         }
 
         return try await withCheckedThrowingContinuation { continuation in
-            AppServerUsageRequest(
+            AppServerRequest(
                 executableURL: executableURL,
+                operation: operation,
                 continuation: continuation
             ).start()
         }
     }
+}
+
+private enum AppServerOperation {
+    case readUsage
+    case consumeReset(creditId: String?, idempotencyKey: String)
+}
+
+private enum AppServerResponse {
+    case usage(UsageSnapshot)
+    case reset(UsageResetOutcome)
 }
 
 private enum CodexExecutable {
@@ -101,9 +136,10 @@ private enum CodexExecutable {
     }
 }
 
-private final class AppServerUsageRequest {
+private final class AppServerRequest {
     private let executableURL: URL
-    private let continuation: CheckedContinuation<UsageSnapshot, Error>
+    private let operation: AppServerOperation
+    private let continuation: CheckedContinuation<AppServerResponse, Error>
     private let process = Process()
     private let input = Pipe()
     private let output = Pipe()
@@ -113,14 +149,16 @@ private final class AppServerUsageRequest {
     private var outputBuffer = Data()
     private var errorBuffer = Data()
     private var didFinish = false
-    private var keepAlive: AppServerUsageRequest?
+    private var keepAlive: AppServerRequest?
     private var timeout: DispatchWorkItem?
 
     init(
         executableURL: URL,
-        continuation: CheckedContinuation<UsageSnapshot, Error>
+        operation: AppServerOperation,
+        continuation: CheckedContinuation<AppServerResponse, Error>
     ) {
         self.executableURL = executableURL
+        self.operation = operation
         self.continuation = continuation
     }
 
@@ -214,8 +252,14 @@ private final class AppServerUsageRequest {
 
         case 3:
             do {
-                let snapshot = try UsageResponseParser.parse(data)
-                finish(.success(snapshot))
+                switch operation {
+                case .readUsage:
+                    let snapshot = try UsageResponseParser.parse(data)
+                    finish(.success(.usage(snapshot)))
+                case .consumeReset:
+                    let outcome = try UsageResponseParser.parseResetOutcome(data)
+                    finish(.success(.reset(outcome)))
+                }
             } catch {
                 finish(.failure(error))
             }
@@ -257,7 +301,22 @@ private final class AppServerUsageRequest {
 
         switch accountType {
         case "chatgpt":
-            send("{\"id\":3,\"method\":\"account/rateLimits/read\",\"params\":null}")
+            switch operation {
+            case .readUsage:
+                send("{\"id\":3,\"method\":\"account/rateLimits/read\",\"params\":null}")
+            case .consumeReset(let creditId, let idempotencyKey):
+                var parameters = ["idempotencyKey": idempotencyKey]
+                if let creditId, !creditId.isEmpty {
+                    parameters["creditId"] = creditId
+                }
+                send(
+                    jsonObject: [
+                        "id": 3,
+                        "method": "account/rateLimitResetCredit/consume",
+                        "params": parameters
+                    ]
+                )
+            }
         case "apiKey":
             finish(.failure(CodexUsageClientError.chatGPTAccountRequired))
         default:
@@ -275,7 +334,20 @@ private final class AppServerUsageRequest {
         }
     }
 
-    private func finish(_ result: Result<UsageSnapshot, Error>) {
+    private func send(jsonObject: [String: Any]) {
+        guard
+            JSONSerialization.isValidJSONObject(jsonObject),
+            let data = try? JSONSerialization.data(withJSONObject: jsonObject),
+            let line = String(data: data, encoding: .utf8)
+        else {
+            finish(.failure(UsageResetParsingError.invalidResponse))
+            return
+        }
+
+        send(line)
+    }
+
+    private func finish(_ result: Result<AppServerResponse, Error>) {
         guard !didFinish else { return }
         didFinish = true
         timeout?.cancel()

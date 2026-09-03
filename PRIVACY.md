@@ -10,7 +10,8 @@ local app-server for:
 
 - the active account type, so it can require ChatGPT subscription sign-in;
 - the Codex weekly usage percentage; and
-- the weekly reset time.
+- the weekly reset time; and
+- available earned resets, including their identifiers and expiration times.
 
 The account-status response can contain an email address, but the app only
 inspects the account type and does not use, copy, log, or store the email. The
@@ -21,10 +22,11 @@ prompts, source code, or Codex conversations.
 
 Codex Usage Bar does not make its own account or analytics requests. The local
 Codex process communicates with OpenAI using the user's existing Codex
-configuration. Buttons in the onboarding screen can open the official Codex
-website or the locally installed Codex desktop app.
+configuration. After explicit confirmation, the app can ask that process to
+consume one earned reset. Buttons in the onboarding screen can open the
+official Codex website or the locally installed Codex desktop app.
 
 ## Storage
 
-Usage values are held in memory while the app is running and are discarded
-when the app quits.
+Usage values, reset details, and reset idempotency keys are held in memory while
+the app is running and are discarded when the app quits.

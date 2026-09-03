@@ -7,3 +7,6 @@ reproduction steps, and the expected impact.
 Codex Usage Bar intentionally delegates authentication to the user's local
 Codex installation and must never add code that reads or persists raw Codex
 credentials.
+
+Consuming an earned reset requires explicit user confirmation and an
+idempotency key so retrying an uncertain request cannot consume it twice.

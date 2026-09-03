@@ -35,6 +35,26 @@ do {
                   "resetsAt": 1800000000
                 }
               }
+            },
+            "rateLimitResetCredits": {
+              "availableCount": 2,
+              "credits": [
+                {
+                  "id": "reset-later",
+                  "resetType": "codexRateLimits",
+                  "status": "available",
+                  "grantedAt": 1770000000,
+                  "expiresAt": 1800000000,
+                  "title": "Full reset",
+                  "description": "Reset eligible limits."
+                },
+                {
+                  "id": "reset-sooner",
+                  "resetType": "codexRateLimits",
+                  "status": "available",
+                  "expiresAt": 1790000000
+                }
+              ]
             }
           }
         }
@@ -48,6 +68,10 @@ do {
         expect(snapshot.windowDurationMinutes == 10_080, "Fel fönsterlängd")
         expect(snapshot.resetsAt == Date(timeIntervalSince1970: 1_800_000_000), "Fel återställningstid")
         expect(snapshot.planType == "plus", "Fel abonnemangstyp")
+        expect(snapshot.resetCredits?.availableCount == 2, "Fel antal återställningar")
+        expect(snapshot.resetCredits?.credits?.count == 2, "Fel återställningsdetaljer")
+        expect(snapshot.resetCredits?.nextCredit?.id == "reset-sooner", "Valde inte återställningen som går ut först")
+        expect(snapshot.resetCredits?.credits?.first?.grantedAt == Date(timeIntervalSince1970: 1_770_000_000), "Fel tilldelningstid")
         expect(snapshot.fetchedAt == fetchedAt, "Fel hämtningstid")
     }
 
@@ -69,6 +93,23 @@ do {
         expect(snapshot.usedPercent == 70, "Valde inte det längre veckofönstret")
         expect(snapshot.remainingPercent == 30, "Fel återstående procent för sekundärt fönster")
         expect(snapshot.windowDurationMinutes == 10_080, "Fel sekundär fönsterlängd")
+        expect(snapshot.resetCredits == nil, "Rapporterade återställningar som saknades")
+    }
+
+    do {
+        let outcomes: [(String, UsageResetOutcome)] = [
+            ("reset", .reset),
+            ("alreadyRedeemed", .alreadyRedeemed),
+            ("nothingToReset", .nothingToReset),
+            ("noCredit", .noCredit),
+            ("futureOutcome", .unknown("futureOutcome"))
+        ]
+
+        for (value, expected) in outcomes {
+            let response = "{\"id\":3,\"result\":{\"outcome\":\"\(value)\"}}"
+            let outcome = try UsageResponseParser.parseResetOutcome(Data(response.utf8))
+            expect(outcome == expected, "Fel resultat för återställning: \(value)")
+        }
     }
 
     do {
@@ -106,7 +147,10 @@ if CommandLine.arguments.contains("--live") {
 
     switch box.result {
     case .success(let snapshot):
-        print("Livekontroll godkänd: \(snapshot.remainingPercent)% kvar.")
+        let resetCount = snapshot.resetCredits?.availableCount ?? 0
+        let expiration = snapshot.resetCredits?.nextCredit?.expiresAt
+            .map { ISO8601DateFormatter().string(from: $0) } ?? "okänd"
+        print("Livekontroll godkänd: \(snapshot.remainingPercent)% kvar, \(resetCount) återställningar, utgång \(expiration).")
     case .failure(let error):
         fatalError("Livekontrollen misslyckades: \(error.localizedDescription)")
     case .none:
