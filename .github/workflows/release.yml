@@ -22,7 +22,8 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Validate release secrets
+      - name: Detect signing configuration
+        id: signing
         env:
           MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
@@ -31,6 +32,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
+          missing=()
           for variable in \
             MACOS_CERTIFICATE_BASE64 \
             MACOS_CERTIFICATE_PASSWORD \
@@ -40,12 +42,28 @@ jobs:
             APPLE_APP_PASSWORD
           do
             if [[ -z "${!variable}" ]]; then
-              echo "Missing GitHub Actions secret: $variable" >&2
-              exit 1
+              missing+=("$variable")
             fi
           done
 
+          if (( ${#missing[@]} == 0 )); then
+            echo "mode=notarized" >> "$GITHUB_OUTPUT"
+            echo "require_notarization=1" >> "$GITHUB_OUTPUT"
+            echo "Developer ID signing and Apple notarization are enabled."
+          else
+            echo "mode=adhoc" >> "$GITHUB_OUTPUT"
+            echo "require_notarization=0" >> "$GITHUB_OUTPUT"
+            echo "::warning::Apple release secrets are incomplete. Publishing an ad-hoc signed build."
+            {
+              echo "### Ad-hoc signed release"
+              echo
+              echo "Apple release secrets are incomplete, so this run skips Developer ID signing and notarization."
+              echo "Missing secret names: ${missing[*]}"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Import Developer ID certificate
+        if: steps.signing.outputs.mode == 'notarized'
         env:
           MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
@@ -86,7 +104,7 @@ jobs:
       - name: Run parser checks
         run: swift run ParserChecks
 
-      - name: Build signed universal app
+      - name: Build universal app
         env:
           VERSION: ${{ steps.release.outputs.version }}
           BUILD_NUMBER: ${{ github.run_number }}
@@ -95,31 +113,52 @@ jobs:
 
       - name: Notarize and package
         env:
-          REQUIRE_NOTARIZATION: "1"
+          REQUIRE_NOTARIZATION: ${{ steps.signing.outputs.require_notarization }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: ./Scripts/package-release.sh
 
       - name: Verify release
+        env:
+          SIGNING_MODE: ${{ steps.signing.outputs.mode }}
         run: |
           executable="dist/CodexUsageBar.app/Contents/MacOS/CodexUsageBar"
           architectures="$(lipo -archs "$executable")"
           [[ "$architectures" == *arm64* ]]
           [[ "$architectures" == *x86_64* ]]
           codesign --verify --deep --strict --verbose=2 dist/CodexUsageBar.app
-          spctl --assess --type execute --verbose=2 dist/CodexUsageBar.app
-          xcrun stapler validate dist/CodexUsageBar.app
+          if [[ "$SIGNING_MODE" == "notarized" ]]; then
+            spctl --assess --type execute --verbose=2 dist/CodexUsageBar.app
+            xcrun stapler validate dist/CodexUsageBar.app
+          else
+            codesign -dv --verbose=4 dist/CodexUsageBar.app 2>&1 | grep "Signature=adhoc"
+          fi
 
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          SIGNING_MODE: ${{ steps.signing.outputs.mode }}
         run: |
           archive="dist/CodexUsageBar-v$RELEASE_VERSION-macOS-universal.zip"
-          gh release create "$RELEASE_TAG" \
-            "$archive" \
-            "$archive.sha256" \
-            --title "Codex Usage Bar $RELEASE_TAG" \
-            --generate-notes
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" \
+              "$archive" \
+              "$archive.sha256" \
+              --clobber
+          elif [[ "$SIGNING_MODE" == "notarized" ]]; then
+            gh release create "$RELEASE_TAG" \
+              "$archive" \
+              "$archive.sha256" \
+              --title "Codex Usage Bar $RELEASE_TAG" \
+              --generate-notes
+          else
+            gh release create "$RELEASE_TAG" \
+              "$archive" \
+              "$archive.sha256" \
+              --title "Codex Usage Bar $RELEASE_TAG" \
+              --generate-notes \
+              --notes "This build is ad-hoc signed and not notarized. If macOS blocks it, right-click the app and select Open."
+          fi
