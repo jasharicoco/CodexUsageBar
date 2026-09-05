@@ -17,7 +17,9 @@ Available earned resets and their expiration are shown in the app and can be use
 The menu bar panel includes a compact **Monster** theme with a dark plum
 background, colorful character, and icon-only controls. Hover over controls for
 labels; use the palette menu to switch between Monster and Classic. The choice
-is saved between launches.
+is saved between launches. Classic retains the original panel layout, labels,
+colors, controls, and five-minute refresh interval. To return to Monster from
+Classic, right-click the panel and choose **Monster theme**.
 
 The monster reacts to remaining weekly usage:
 
@@ -27,7 +29,7 @@ The monster reacts to remaining weekly usage:
 - **0%:** purple and asleep.
 
 Animations respect macOS Reduce Motion. Usage refreshes automatically every
-60 seconds; the refresh icon also allows a manual update. Reset credits still
+60 seconds in Monster (five minutes in Classic); manual refresh remains available. Reset credits still
 require confirmation before use.
 
 ## Install

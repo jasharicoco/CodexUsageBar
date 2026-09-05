@@ -5,16 +5,29 @@ import CodexUsageCore
 @main
 struct CodexUsageBarApp: App {
     @StateObject private var model = UsageModel()
+    @AppStorage("snackTheme") private var snackTheme = true
     private let language = CodexUsageLanguage.preferred()
 
     var body: some Scene {
         MenuBarExtra {
-            UsagePanel(model: model, language: language)
+            Group {
+                if snackTheme {
+                    UsagePanel(model: model, language: language)
+                } else {
+                    ClassicUsagePanel(model: model, language: language)
+                        .contextMenu {
+                            Button("Monster theme") { snackTheme = true }
+                        }
+                }
+            }
+            .onChange(of: snackTheme) { enabled in
+                model.setRefreshInterval(enabled ? 60 : 5 * 60)
+            }
         } label: {
             Text(model.menuBarText)
                 .monospacedDigit()
                 .onAppear {
-                    model.start()
+                    model.start(refreshInterval: snackTheme ? 60 : 5 * 60)
                 }
         }
         .menuBarExtraStyle(.window)
@@ -157,6 +170,325 @@ private struct UsagePanel: View {
             }
 
 
+        }
+    }
+
+    private func resetCreditsContent(_ resetCredits: UsageResetCredits) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.counterclockwise.circle.fill")
+                .font(.title3)
+                .foregroundStyle(.blue)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(strings.resetAvailable(resetCredits.availableCount))
+                    .font(.caption.weight(.semibold))
+
+                if let expiresAt = resetCredits.nextCredit?.expiresAt {
+                    Text(strings.resetExpires(expirationDate(expiresAt), count: resetCredits.availableCount))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer(minLength: 6)
+
+            Button {
+                selectedResetCreditID = resetCredits.nextCredit?.id
+                isShowingResetConfirmation = true
+            } label: {
+                if model.isConsumingReset {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Text(strings.useReset)
+                }
+            }
+            .disabled(model.isBusy)
+            .controlSize(.small)
+        }
+        .padding(10)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func resetNoticeContent(_ notice: UsageResetNotice) -> some View {
+        Label(strings.resetNotice(notice), systemImage: resetNoticeIcon(notice))
+            .font(.caption)
+            .foregroundStyle(resetNoticeColor(notice))
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func resetNoticeIcon(_ notice: UsageResetNotice) -> String {
+        switch notice {
+        case .reset, .alreadyRedeemed:
+            return "checkmark.circle.fill"
+        case .nothingToReset, .noCredit, .unknown:
+            return "info.circle.fill"
+        case .failure:
+            return "exclamationmark.triangle.fill"
+        }
+    }
+
+    private func resetNoticeColor(_ notice: UsageResetNotice) -> Color {
+        switch notice {
+        case .reset, .alreadyRedeemed:
+            return .green
+        case .nothingToReset, .noCredit, .unknown:
+            return .secondary
+        case .failure:
+            return .orange
+        }
+    }
+
+    @ViewBuilder
+    private func issueContent(_ issue: UsageConnectionIssue) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(strings.issueTitle(issue), systemImage: issueIcon(issue))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.orange)
+            Text(strings.issueMessage(issue))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                switch issue {
+                case .codexMissing:
+                    Button(strings.getCodex) {
+                        openCodexWebsite()
+                    }
+                case .signInRequired:
+                    Button(strings.openCodex) {
+                        openCodex()
+                    }
+                    Button(strings.copyCodexLogin) {
+                        copyToPasteboard("codex login")
+                    }
+                case .chatGPTAccountRequired:
+                    Button(strings.openCodex) {
+                        openCodex()
+                    }
+                    Button(strings.copySignInSteps) {
+                        copyToPasteboard("codex logout && codex login")
+                    }
+                case .unsupportedAccount, .generic:
+                    Button(strings.tryAgain) {
+                        model.refresh()
+                    }
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .padding(.top, 4)
+        }
+    }
+
+    private func issueIcon(_ issue: UsageConnectionIssue) -> String {
+        switch issue {
+        case .codexMissing:
+            return "square.and.arrow.down"
+        case .signInRequired, .chatGPTAccountRequired:
+            return "person.crop.circle.badge.exclamationmark"
+        case .unsupportedAccount, .generic:
+            return "exclamationmark.triangle.fill"
+        }
+    }
+
+    private var loadingContent: some View {
+        HStack(spacing: 10) {
+            ProgressView()
+                .controlSize(.small)
+            Text(strings.readingUsage)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 12)
+    }
+
+    private func progressColor(_ remainingPercent: Int) -> Color {
+        switch remainingPercent {
+        case 50...:
+            return .green
+        case 20..<50:
+            return .orange
+        default:
+            return .red
+        }
+    }
+
+    private func resetDate(_ date: Date) -> String {
+        date.formatted(
+            Date.FormatStyle()
+                .weekday(.abbreviated)
+                .day()
+                .month(.abbreviated)
+                .hour()
+                .minute()
+                .locale(language.locale)
+        )
+    }
+
+    private func updatedTime(_ date: Date) -> String {
+        date.formatted(
+            Date.FormatStyle()
+                .hour()
+                .minute()
+                .locale(language.locale)
+        )
+    }
+
+    private func expirationDate(_ date: Date) -> String {
+        date.formatted(
+            Date.FormatStyle()
+                .day()
+                .month(.abbreviated)
+                .hour()
+                .minute()
+                .locale(language.locale)
+        )
+    }
+
+    private func openCodex() {
+        if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex") {
+            NSWorkspace.shared.openApplication(
+                at: appURL,
+                configuration: NSWorkspace.OpenConfiguration()
+            )
+        } else {
+            openCodexWebsite()
+        }
+    }
+
+    private func openCodexWebsite() {
+        if let webURL = URL(string: "https://chatgpt.com/codex") {
+            NSWorkspace.shared.open(webURL)
+        }
+    }
+
+    private func copyToPasteboard(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+}
+
+private struct ClassicUsagePanel: View {
+    @ObservedObject var model: UsageModel
+    let language: CodexUsageLanguage
+    @State private var isShowingResetConfirmation = false
+    @State private var selectedResetCreditID: String?
+
+    private var strings: AppStrings {
+        AppStrings(language: language)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 10) {
+                CodexMark()
+                    .frame(width: 24, height: 24)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Codex")
+                        .font(.headline)
+                    Text(strings.weeklyLimit)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                if model.isBusy {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+
+            if let snapshot = model.snapshot {
+                usageContent(snapshot)
+            } else if let connectionIssue = model.connectionIssue {
+                issueContent(connectionIssue)
+            } else {
+                loadingContent
+            }
+
+            if let connectionIssue = model.connectionIssue, model.snapshot != nil {
+                Label(strings.issueMessage(connectionIssue), systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Divider()
+
+            HStack {
+                Button {
+                    model.refresh()
+                } label: {
+                    Label(strings.refresh, systemImage: "arrow.clockwise")
+                }
+                .disabled(model.isBusy)
+
+                Spacer()
+
+                Button(strings.openCodex) {
+                    openCodex()
+                }
+
+                Button(strings.quit) {
+                    NSApplication.shared.terminate(nil)
+                }
+            }
+            .buttonStyle(.borderless)
+            .font(.caption)
+        }
+        .padding(16)
+        .frame(width: 340)
+        .alert(strings.confirmResetTitle, isPresented: $isShowingResetConfirmation) {
+            Button(strings.cancel, role: .cancel) {}
+            Button(strings.useReset, role: .destructive) {
+                model.consumeReset(creditId: selectedResetCreditID)
+            }
+        } message: {
+            Text(strings.confirmResetMessage)
+        }
+    }
+
+    @ViewBuilder
+    private func usageContent(_ snapshot: UsageSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Text("\(snapshot.remainingPercent)")
+                    .font(.system(size: 40, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                Text(strings.remainingSuffix)
+                    .font(.title3.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+
+            ProgressView(value: Double(snapshot.remainingPercent), total: 100)
+                .tint(progressColor(snapshot.remainingPercent))
+
+            HStack {
+                Text(strings.used(snapshot.usedPercent))
+                Spacer()
+                if let resetsAt = snapshot.resetsAt {
+                    Text(strings.resets(resetDate(resetsAt)))
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            if let resetCredits = snapshot.resetCredits, resetCredits.availableCount > 0 {
+                resetCreditsContent(resetCredits)
+            }
+
+            if let resetNotice = model.resetNotice {
+                resetNoticeContent(resetNotice)
+            }
+
+            Text(strings.updated(updatedTime(snapshot.fetchedAt)))
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
         }
     }
 
