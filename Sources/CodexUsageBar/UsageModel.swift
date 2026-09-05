@@ -61,7 +61,7 @@ final class UsageModel: ObservableObject {
         guard refreshTimer == nil else { return }
         refresh()
 
-        let timer = Timer(timeInterval: 5 * 60, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.refresh()
             }

@@ -22,8 +22,10 @@ struct CodexUsageBarApp: App {
 }
 
 private struct UsagePanel: View {
+    @Environment(\.colorScheme) private var systemColorScheme
     @ObservedObject var model: UsageModel
     let language: CodexUsageLanguage
+    @AppStorage("snackTheme") private var snackTheme = true
     @State private var isShowingResetConfirmation = false
     @State private var selectedResetCreditID: String?
 
@@ -33,25 +35,41 @@ private struct UsagePanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 10) {
-                CodexMark()
-                    .frame(width: 24, height: 24)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Codex")
-                        .font(.headline)
-                    Text(strings.weeklyLimit)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
+            HStack(spacing: 16) {
+                CodexMark().frame(width: 18, height: 18)
+                    .help("Codex weekly usage")
                 Spacer()
-
-                if model.isBusy {
-                    ProgressView()
-                        .controlSize(.small)
+                Button { model.refresh() } label: {
+                    Image(systemName: "arrow.clockwise")
                 }
+                .disabled(model.isBusy)
+                .help("Refresh · automatically every minute")
+                .accessibilityLabel(strings.refresh)
+                Menu {
+                    Picker("Theme", selection: $snackTheme) {
+                        Text("Classic").tag(false)
+                        Text("Monster").tag(true)
+                    }
+                } label: {
+                    Image(systemName: "paintpalette")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("Theme")
+                .accessibilityLabel("Theme")
+                Button { openCodex() } label: {
+                    Image(systemName: "arrow.up.forward.app")
+                }
+                .help(strings.openCodex)
+                .accessibilityLabel(strings.openCodex)
+                Button { NSApplication.shared.terminate(nil) } label: {
+                    Image(systemName: "power")
+                }
+                .help(strings.quit)
+                .accessibilityLabel(strings.quit)
             }
+            .buttonStyle(.borderless)
+            .font(.system(size: 14))
 
             if let snapshot = model.snapshot {
                 usageContent(snapshot)
@@ -68,31 +86,14 @@ private struct UsagePanel: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Divider()
 
-            HStack {
-                Button {
-                    model.refresh()
-                } label: {
-                    Label(strings.refresh, systemImage: "arrow.clockwise")
-                }
-                .disabled(model.isBusy)
-
-                Spacer()
-
-                Button(strings.openCodex) {
-                    openCodex()
-                }
-
-                Button(strings.quit) {
-                    NSApplication.shared.terminate(nil)
-                }
-            }
-            .buttonStyle(.borderless)
-            .font(.caption)
         }
-        .padding(16)
-        .frame(width: 340)
+        .padding(snackTheme ? 20 : 16)
+        .frame(width: 290)
+        .background(snackTheme ? Color(red: 0.12, green: 0.08, blue: 0.20) : Color(nsColor: .windowBackgroundColor))
+        .foregroundStyle(snackTheme ? Color(red: 0.95, green: 0.91, blue: 1) : Color.primary)
+        .tint(snackTheme ? Color(red: 0.65, green: 0.95, blue: 0.40) : Color.accentColor)
+        .environment(\.colorScheme, snackTheme ? .dark : systemColorScheme)
         .alert(strings.confirmResetTitle, isPresented: $isShowingResetConfirmation) {
             Button(strings.cancel, role: .cancel) {}
             Button(strings.useReset, role: .destructive) {
@@ -106,23 +107,42 @@ private struct UsagePanel: View {
     @ViewBuilder
     private func usageContent(_ snapshot: UsageSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 10) {
+            if snackTheme {
+                HStack {
+                    Spacer()
+                    VStack(spacing: 8) {
+                        SnackBuddy(remaining: snapshot.remainingPercent)
+                            .frame(width: 230, height: 150)
+                        Text(snapshot.remainingPercent >= 50 ? "Mmm. Stuffed with tokens." : snapshot.remainingPercent >= 20 ? "Got any more tokens?" : snapshot.remainingPercent > 0 ? "Hungry for tokens…" : "Dreaming of tokens…")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, 4)
+            }
+
             HStack(alignment: .firstTextBaseline, spacing: 5) {
                 Text("\(snapshot.remainingPercent)")
+                    .help("Weekly usage remaining")
+                    .accessibilityLabel("\(snapshot.remainingPercent) percent weekly usage remaining")
                     .font(.system(size: 40, weight: .semibold, design: .rounded))
                     .monospacedDigit()
-                Text(strings.remainingSuffix)
+                Text(snackTheme ? "%" : strings.remainingSuffix)
                     .font(.title3.weight(.medium))
                     .foregroundStyle(.secondary)
             }
 
             ProgressView(value: Double(snapshot.remainingPercent), total: 100)
-                .tint(progressColor(snapshot.remainingPercent))
+                .tint(snackTheme ? Color(red: 0.65, green: 0.95, blue: 0.40) : progressColor(snapshot.remainingPercent))
 
             HStack {
-                Text(strings.used(snapshot.usedPercent))
+                Image(systemName: "chart.pie")
+                    .help(strings.used(snapshot.usedPercent))
+                    .accessibilityLabel(strings.used(snapshot.usedPercent))
                 Spacer()
                 if let resetsAt = snapshot.resetsAt {
-                    Text(strings.resets(resetDate(resetsAt)))
+                    Label(resetDate(resetsAt), systemImage: "clock.arrow.circlepath")
+                        .help(strings.resets(resetDate(resetsAt)))
                 }
             }
             .font(.caption)
@@ -136,9 +156,7 @@ private struct UsagePanel: View {
                 resetNoticeContent(resetNotice)
             }
 
-            Text(strings.updated(updatedTime(snapshot.fetchedAt)))
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+
         }
     }
 
