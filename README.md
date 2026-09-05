@@ -22,10 +22,11 @@ or outer corner radius is applied. **Classic** and **Monster** use the same
 Both share the same header, usage summary, reset controls, and compact footer. Hover over icons for
 labels and the last usage refresh time.
 
-Click the palette button to choose **Classic** or **Monster** from a native menu.
-The usage menu reopens with the selected theme, and the choice is saved between
-launches. Switching themes adjusts the height while keeping the popup's top
-anchored to the menu bar.
+Click the palette button to reveal native **Classic / Monster** controls inside
+the header. The usage panel stays visible while choosing a theme; click the
+palette again to hide the choices. The selected theme is saved between launches.
+Switching themes adjusts the height while keeping the popup's top anchored to
+the menu bar.
 
 The monster reacts to remaining weekly usage:
 

@@ -64,40 +64,14 @@ final class StatusBarController: NSObject, NSApplicationDelegate, NSMenuDelegate
         UsagePanel(model: model, updater: updater, language: language,
                    snackTheme: UserDefaults.standard.object(forKey: "snackTheme") as? Bool ?? true,
                    onSizeChange: { [weak self] in self?.resizeMenu(to: $0) },
-                   onShowThemes: { [weak self] in self?.showThemes(from: $0) },
+                   onThemeSelection: { [weak self] in self?.selectTheme($0) },
                    onReset: { [weak self] in self?.confirmReset(creditID: $0) },
                    onInstall: { [weak self] in self?.performAfterClosingMenu { [weak self] in self?.updater.install() } })
     }
 
-    private func showThemes(from view: NSView) {
-        guard let window = view.window else { return }
-        let anchor = window.convertPoint(toScreen: view.convert(NSPoint(x: 0, y: view.bounds.minY), to: nil))
-        performAfterClosingMenu { [weak self] in
-            guard let self else { return }
-            // AppKit does not open a second popup control while the status menu
-            // is tracking. End that session before presenting the theme choices.
-            let themes = NSMenu(title: AppStrings(language: self.language).appearance)
-            themes.appearance = NSApplication.shared.effectiveAppearance
-            themes.autoenablesItems = false
-            let monster = UserDefaults.standard.object(forKey: "snackTheme") as? Bool ?? true
-            for (title, tag) in [("Classic", 0), ("Monster", 1)] {
-                let item = NSMenuItem(title: title, action: #selector(self.chooseTheme(_:)), keyEquivalent: "")
-                item.tag = tag
-                item.target = self
-                item.state = (tag == 1) == monster ? .on : .off
-                themes.addItem(item)
-            }
-            if themes.popUp(positioning: nil, at: anchor, in: nil) {
-                self.statusItem?.button?.performClick(nil)
-            }
-        }
-    }
-
-    @objc private func chooseTheme(_ item: NSMenuItem) {
-        selectTheme(item.tag == 1)
-    }
-
     private func selectTheme(_ monster: Bool) {
+        let current = UserDefaults.standard.object(forKey: "snackTheme") as? Bool ?? true
+        guard current != monster else { return }
         UserDefaults.standard.set(monster, forKey: "snackTheme")
         if isTracking {
             reopenAfterResize = true

@@ -21,7 +21,7 @@ struct UsagePanel: View {
     let language: CodexUsageLanguage
     var snackTheme = true
     var onSizeChange: (CGSize) -> Void = { _ in }
-    var onShowThemes: (NSView) -> Void = { _ in }
+    var onThemeSelection: (Bool) -> Void = { _ in }
     var onReset: (String?) -> Void = { _ in }
     var onInstall: () -> Void = {}
 
@@ -63,7 +63,7 @@ struct UsagePanel: View {
     }
 
     private var header: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             CodexMark().frame(width: 22, height: 22)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Codex").font(.system(size: 14, weight: .semibold))
@@ -71,9 +71,9 @@ struct UsagePanel: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
-            Spacer()
-            ThemePicker(label: strings.appearance, onOpen: onShowThemes)
-                .frame(width: 26, height: 26)
+            Spacer(minLength: 0)
+            ThemePicker(monster: snackTheme, label: strings.appearance, onSelection: onThemeSelection)
+                .frame(width: 162, height: 26)
         }
     }
 
