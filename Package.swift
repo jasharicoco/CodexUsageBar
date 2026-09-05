@@ -9,9 +9,12 @@ let package = Package(
     ],
     products: [
         .executable(name: "CodexUsageBar", targets: ["CodexUsageBar"]),
+        .executable(name: "UpdateInstaller", targets: ["UpdateInstaller"]),
         .executable(name: "ParserChecks", targets: ["ParserChecks"])
     ],
     targets: [
+        .executableTarget(name: "UpdateChecks", dependencies: ["CodexUsageCore"], path: "Tests/AppUpdateTests"),
+        .executableTarget(name: "UpdateInstaller", dependencies: ["CodexUsageCore"]),
         .target(
             name: "CodexUsageCore",
             path: "Sources/CodexUsageCore"

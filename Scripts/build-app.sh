@@ -22,7 +22,6 @@ run_swift_build() {
     arguments=(
         swift build
         --configuration "$configuration"
-        --product CodexUsageBar
         --arch "$architecture"
         --scratch-path "$scratch_path"
     )
@@ -77,7 +76,7 @@ binary_path() {
 cd "$project_directory"
 
 rm -rf "$app_directory"
-mkdir -p "$contents_directory/MacOS" "$contents_directory/Resources"
+mkdir -p "$contents_directory/MacOS" "$contents_directory/Resources" "$contents_directory/Helpers"
 
 if [[ "$universal_build" == "1" ]]; then
     build_architecture arm64
@@ -88,11 +87,15 @@ if [[ "$universal_build" == "1" ]]; then
 
     lipo -create "$arm64_binary" "$x86_64_binary" \
         -output "$contents_directory/MacOS/CodexUsageBar"
+    lipo -create "$(binary_path arm64)/UpdateInstaller" "$(binary_path x86_64)/UpdateInstaller" \
+        -output "$contents_directory/Helpers/UpdateInstaller"
 else
     native_architecture=$(uname -m)
     build_architecture "$native_architecture"
     cp "$(binary_path "$native_architecture")/CodexUsageBar" \
         "$contents_directory/MacOS/CodexUsageBar"
+    cp "$(binary_path "$native_architecture")/UpdateInstaller" \
+        "$contents_directory/Helpers/UpdateInstaller"
 fi
 
 cp "$project_directory/Info.plist" "$contents_directory/Info.plist"
@@ -102,8 +105,11 @@ cp "$project_directory/Assets/OpenAIBlossom@2x.png" "$contents_directory/Resourc
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $build_number" "$contents_directory/Info.plist"
 
 if [[ "$signing_identity" == "-" ]]; then
+    codesign --force --sign - "$contents_directory/Helpers/UpdateInstaller"
     codesign --force --deep --sign - "$app_directory"
 else
+    codesign --force --options runtime --timestamp --sign "$signing_identity" \
+        "$contents_directory/Helpers/UpdateInstaller"
     codesign --force --deep --options runtime --timestamp \
         --sign "$signing_identity" "$app_directory"
 fi

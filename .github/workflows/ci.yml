@@ -19,8 +19,14 @@ jobs:
       - name: Run parser checks
         run: swift run ParserChecks
 
+      - name: Test app updates
+        run: swift run UpdateChecks
+
       - name: Build universal app
         run: ./Scripts/build-app.sh
+
+      - name: Test packaged app updates
+        run: swift run UpdateChecks --app dist/CodexUsageBar.app
 
       - name: Verify bundle
         run: |
@@ -28,5 +34,8 @@ jobs:
           architectures="$(lipo -archs "$executable")"
           [[ "$architectures" == *arm64* ]]
           [[ "$architectures" == *x86_64* ]]
+          helper_architectures="$(lipo -archs dist/CodexUsageBar.app/Contents/Helpers/UpdateInstaller)"
+          [[ "$helper_architectures" == *arm64* ]]
+          [[ "$helper_architectures" == *x86_64* ]]
           codesign --verify --deep --strict dist/CodexUsageBar.app
           plutil -lint dist/CodexUsageBar.app/Contents/Info.plist

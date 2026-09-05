@@ -57,16 +57,11 @@ final class UsageModel: ObservableObject {
         return isLoading ? "…" : "!"
     }
 
-    func start(refreshInterval: TimeInterval = 5 * 60) {
+    func start() {
         guard refreshTimer == nil else { return }
         refresh()
 
-        setRefreshInterval(refreshInterval)
-    }
-
-    func setRefreshInterval(_ interval: TimeInterval) {
-        refreshTimer?.invalidate()
-        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.refresh()
             }

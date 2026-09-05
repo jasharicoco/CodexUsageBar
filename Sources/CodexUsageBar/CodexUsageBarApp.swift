@@ -5,6 +5,7 @@ import CodexUsageCore
 @main
 struct CodexUsageBarApp: App {
     @StateObject private var model = UsageModel()
+    @StateObject private var updater = AppUpdateModel()
     @AppStorage("snackTheme") private var snackTheme = true
     private let language = CodexUsageLanguage.preferred()
 
@@ -12,19 +13,17 @@ struct CodexUsageBarApp: App {
         MenuBarExtra {
             Group {
                 if snackTheme {
-                    UsagePanel(model: model, language: language)
+                    UsagePanel(model: model, updater: updater, language: language)
                 } else {
-                    ClassicUsagePanel(model: model, language: language)
+                    ClassicUsagePanel(model: model, updater: updater, language: language)
                 }
             }
-            .onChange(of: snackTheme) { enabled in
-                model.setRefreshInterval(enabled ? 60 : 5 * 60)
-            }
         } label: {
-            Text(model.menuBarText)
+            Text(model.menuBarText + (updater.release == nil ? "" : " ↑"))
                 .monospacedDigit()
                 .onAppear {
-                    model.start(refreshInterval: snackTheme ? 60 : 5 * 60)
+                    model.start()
+                    updater.start()
                 }
         }
         .menuBarExtraStyle(.window)
@@ -34,6 +33,7 @@ struct CodexUsageBarApp: App {
 private struct UsagePanel: View {
     @Environment(\.colorScheme) private var systemColorScheme
     @ObservedObject var model: UsageModel
+    @ObservedObject var updater: AppUpdateModel
     let language: CodexUsageLanguage
     @AppStorage("snackTheme") private var snackTheme = true
     @State private var isShowingResetConfirmation = false
@@ -95,8 +95,8 @@ private struct UsagePanel: View {
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
             }
-
-
+            Divider()
+            AppUpdateView(updater: updater, language: language)
         }
         .padding(snackTheme ? 20 : 16)
         .frame(width: 290)
@@ -371,6 +371,7 @@ private struct UsagePanel: View {
 private struct ClassicUsagePanel: View {
     @AppStorage("snackTheme") private var snackTheme = true
     @ObservedObject var model: UsageModel
+    @ObservedObject var updater: AppUpdateModel
     let language: CodexUsageLanguage
     @State private var isShowingResetConfirmation = false
     @State private var selectedResetCreditID: String?
@@ -451,6 +452,9 @@ private struct ClassicUsagePanel: View {
             }
             .buttonStyle(.borderless)
             .font(.caption)
+
+            Divider()
+            AppUpdateView(updater: updater, language: language)
         }
         .padding(16)
         .frame(width: 340)
