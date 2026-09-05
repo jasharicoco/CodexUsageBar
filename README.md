@@ -14,12 +14,12 @@ Available earned resets and their expiration are shown in the app and can be use
 
 ## Appearance and refresh
 
-The rounded popup stays attached to the menu bar and uses the same 320-point
-width in **Classic** and **Monster**. Classic uses the native macOS menu material
-and system accent color, following light/dark mode and accessibility settings.
-macOS draws the popup's outer corners; no custom corner radius is applied.
-Monster adds a dark plum background and an animated character. Both share the same
-header, usage summary, reset controls, and compact footer. Hover over icons for
+The app opens a native macOS status menu directly below the menu bar, without
+a popover arrow. macOS draws its background, border, rounded corners, and shadow,
+following light/dark mode and accessibility settings. No custom background color
+or outer corner radius is applied. **Classic** and **Monster** use the same
+320-point width and the system accent color. Monster adds an animated character.
+Both share the same header, usage summary, reset controls, and compact footer. Hover over icons for
 labels and the last usage refresh time.
 
 Use the palette menu to switch between **Classic** and **Monster**. The choice is

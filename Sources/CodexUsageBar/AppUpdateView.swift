@@ -5,6 +5,7 @@ import SwiftUI
 struct AppUpdateView: View {
     @ObservedObject var updater: AppUpdateModel
     let language: CodexUsageLanguage
+    var onInstall: () -> Void = {}
 
     private func text(_ swedish: String, _ english: String) -> String {
         language.text(swedish: swedish, english: english)
@@ -31,7 +32,7 @@ struct AppUpdateView: View {
                     .help(text("Hämtar och installerar uppdatering…", "Downloading and installing update…"))
                     .accessibilityLabel(text("Installerar uppdatering", "Installing update"))
             } else if let release = updater.release {
-                Button { updater.install() } label: {
+                Button(action: onInstall) {
                     Image(systemName: "arrow.down.circle.fill")
                         .font(.system(size: 14))
                         .foregroundStyle(.tint)
@@ -42,15 +43,5 @@ struct AppUpdateView: View {
             }
         }
         .buttonStyle(PanelButtonStyle())
-        .alert(text("Uppdateringen kunde inte installeras", "The update could not be installed"),
-               isPresented: Binding(get: { updater.installationError != nil }, set: { if !$0 { updater.dismissInstallationError() } })) {
-            Button(text("Försök igen", "Try again")) { updater.install() }
-            Button(text("Öppna releasen", "Open release")) {
-                NSWorkspace.shared.open(updater.release?.pageURL ?? AppRelease.releasesURL)
-            }
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(updater.installationError ?? "")
-        }
     }
 }

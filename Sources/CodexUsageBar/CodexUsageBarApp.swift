@@ -19,16 +19,14 @@ struct UsagePanel: View {
     @ObservedObject var model: UsageModel
     @ObservedObject var updater: AppUpdateModel
     let language: CodexUsageLanguage
+    var snackTheme = true
     var onSizeChange: (CGSize) -> Void = { _ in }
-    var onThemeChange: (Bool) -> Void = { _ in }
-    @AppStorage("snackTheme") private var snackTheme = true
-    @State private var isShowingResetConfirmation = false
-    @State private var selectedResetCreditID: String?
+    var onThemeSelection: (Bool) -> Void = { _ in }
+    var onReset: (String?) -> Void = { _ in }
+    var onInstall: () -> Void = {}
 
     private var strings: AppStrings { AppStrings(language: language) }
-    private var accent: Color {
-        snackTheme ? Color(red: 0.65, green: 0.95, blue: 0.40) : .accentColor
-    }
+    private var accent: Color { .accentColor }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -55,13 +53,6 @@ struct UsagePanel: View {
         .padding(20)
         .frame(width: Self.width)
         .fixedSize(horizontal: false, vertical: true)
-        .background {
-            if snackTheme {
-                Color(red: 0.12, green: 0.08, blue: 0.20)
-            } else {
-                SystemMenuMaterial()
-            }
-        }
         .tint(accent)
         .background {
             GeometryReader { geometry in
@@ -69,16 +60,6 @@ struct UsagePanel: View {
             }
         }
         .onPreferenceChange(PanelSizeKey.self, perform: onSizeChange)
-        .onAppear { onThemeChange(snackTheme) }
-        .onChange(of: snackTheme, perform: onThemeChange)
-        .alert(strings.confirmResetTitle, isPresented: $isShowingResetConfirmation) {
-            Button(strings.cancel, role: .cancel) {}
-            Button(strings.useReset, role: .destructive) {
-                model.consumeReset(creditId: selectedResetCreditID)
-            }
-        } message: {
-            Text(strings.confirmResetMessage)
-        }
     }
 
     private var header: some View {
@@ -92,7 +73,7 @@ struct UsagePanel: View {
             }
             Spacer()
             Menu {
-                Picker(strings.appearance, selection: $snackTheme) {
+                Picker(strings.appearance, selection: Binding(get: { snackTheme }, set: onThemeSelection)) {
                     Text("Classic").tag(false)
                     Text("Monster").tag(true)
                 }
@@ -112,7 +93,7 @@ struct UsagePanel: View {
 
     private var footer: some View {
         HStack(spacing: 10) {
-            AppUpdateView(updater: updater, language: language)
+            AppUpdateView(updater: updater, language: language, onInstall: onInstall)
             Spacer(minLength: 8)
             Button { model.refresh() } label: {
                 Image(systemName: "arrow.clockwise")
@@ -202,8 +183,7 @@ struct UsagePanel: View {
             Spacer(minLength: 6)
 
             Button {
-                selectedResetCreditID = resetCredits.nextCredit?.id
-                isShowingResetConfirmation = true
+                onReset(resetCredits.nextCredit?.id)
             } label: {
                 if model.isConsumingReset {
                     ProgressView()
@@ -374,19 +354,6 @@ private struct PanelSizeKey: PreferenceKey {
     static func reduce(value: inout CGSize, nextValue: () -> CGSize) { value = nextValue() }
 }
 
-/// Let AppKit resolve menu colors, vibrancy, contrast, and transparency from system preferences.
-private struct SystemMenuMaterial: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = .menu
-        view.blendingMode = .behindWindow
-        view.state = .active
-        return view
-    }
-
-    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
-}
-
 struct PanelButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -398,7 +365,7 @@ struct PanelButtonStyle: ButtonStyle {
     }
 }
 
-private struct AppStrings {
+struct AppStrings {
     let language: CodexUsageLanguage
 
     var appearance: String { text("Utseende", "Appearance") }
