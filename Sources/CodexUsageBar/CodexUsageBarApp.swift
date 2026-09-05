@@ -49,14 +49,19 @@ struct UsagePanel: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Divider().opacity(0.6)
+            Divider()
             footer
         }
         .padding(20)
         .frame(width: Self.width)
         .fixedSize(horizontal: false, vertical: true)
-        .background(snackTheme ? Color(red: 0.12, green: 0.08, blue: 0.20) : Color(nsColor: .windowBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background {
+            if snackTheme {
+                Color(red: 0.12, green: 0.08, blue: 0.20)
+            } else {
+                SystemMenuMaterial()
+            }
+        }
         .tint(accent)
         .background {
             GeometryReader { geometry in
@@ -153,7 +158,7 @@ struct UsagePanel: View {
 
             VStack(spacing: 8) {
                 ProgressView(value: Double(snapshot.remainingPercent), total: 100)
-                    .tint(snackTheme ? accent : progressColor(snapshot.remainingPercent))
+                    .tint(accent)
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(strings.used(snapshot.usedPercent))
                     Spacer(minLength: 0)
@@ -179,7 +184,7 @@ struct UsagePanel: View {
         HStack(spacing: 10) {
             Image(systemName: "arrow.counterclockwise.circle.fill")
                 .font(.title3)
-                .foregroundStyle(.blue)
+                .foregroundStyle(.tint)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(strings.resetAvailable(resetCredits.availableCount))
@@ -211,7 +216,7 @@ struct UsagePanel: View {
             .controlSize(.small)
         }
         .padding(12)
-        .background(.quaternary.opacity(0.65), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func resetNoticeContent(_ notice: UsageResetNotice) -> some View {
@@ -309,17 +314,6 @@ struct UsagePanel: View {
         .padding(.vertical, 12)
     }
 
-    private func progressColor(_ remainingPercent: Int) -> Color {
-        switch remainingPercent {
-        case 50...:
-            return .green
-        case 20..<50:
-            return .orange
-        default:
-            return .red
-        }
-    }
-
     private func resetDate(_ date: Date) -> String {
         date.formatted(
             Date.FormatStyle()
@@ -378,6 +372,19 @@ struct UsagePanel: View {
 private struct PanelSizeKey: PreferenceKey {
     static var defaultValue: CGSize = .zero
     static func reduce(value: inout CGSize, nextValue: () -> CGSize) { value = nextValue() }
+}
+
+/// Let AppKit resolve menu colors, vibrancy, contrast, and transparency from system preferences.
+private struct SystemMenuMaterial: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .menu
+        view.blendingMode = .behindWindow
+        view.state = .active
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
 }
 
 struct PanelButtonStyle: ButtonStyle {

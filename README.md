@@ -15,8 +15,10 @@ Available earned resets and their expiration are shown in the app and can be use
 ## Appearance and refresh
 
 The rounded popup stays attached to the menu bar and uses the same 320-point
-width in **Classic** and **Monster**. Classic follows macOS appearance; Monster
-adds a dark plum background and an animated character. Both share the same
+width in **Classic** and **Monster**. Classic uses the native macOS menu material
+and system accent color, following light/dark mode and accessibility settings.
+macOS draws the popup's outer corners; no custom corner radius is applied.
+Monster adds a dark plum background and an animated character. Both share the same
 header, usage summary, reset controls, and compact footer. Hover over icons for
 labels and the last usage refresh time.
 

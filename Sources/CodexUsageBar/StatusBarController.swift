@@ -12,6 +12,8 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
     private var subscriptions = Set<AnyCancellable>()
+    private var appearanceObservation: NSKeyValueObservation?
+    private var usesMonster = true
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -31,6 +33,12 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
         popover.animates = false
         popover.contentSize = NSSize(width: UsagePanel.width, height: 200)
         updateAppearance(monster: UserDefaults.standard.object(forKey: "snackTheme") as? Bool ?? true)
+        appearanceObservation = NSApplication.shared.observe(\.effectiveAppearance) { [weak self] _, _ in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.updateAppearance(monster: self.usesMonster)
+            }
+        }
 
         model.objectWillChange
             .receive(on: RunLoop.main)
@@ -71,6 +79,7 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
     }
 
     private func updateAppearance(monster: Bool) {
-        popover.appearance = monster ? NSAppearance(named: .darkAqua) : nil
+        usesMonster = monster
+        popover.appearance = monster ? NSAppearance(named: .darkAqua) : NSApplication.shared.effectiveAppearance
     }
 }
