@@ -18,8 +18,8 @@ The menu bar panel includes a compact **Monster** theme with a dark plum
 background, colorful character, and icon-only controls. Hover over controls for
 labels; use the palette menu to switch between Monster and Classic. The choice
 is saved between launches. Classic retains the original panel layout, labels,
-colors, controls, and five-minute refresh interval. To return to Monster from
-Classic, right-click the panel and choose **Monster theme**.
+colors, controls, and five-minute refresh interval, with a palette menu added
+to its header. Use the palette menu in either theme to select **Classic** or **Monster**.
 
 The monster reacts to remaining weekly usage:
 

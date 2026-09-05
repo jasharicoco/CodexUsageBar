@@ -15,9 +15,6 @@ struct CodexUsageBarApp: App {
                     UsagePanel(model: model, language: language)
                 } else {
                     ClassicUsagePanel(model: model, language: language)
-                        .contextMenu {
-                            Button("Monster theme") { snackTheme = true }
-                        }
                 }
             }
             .onChange(of: snackTheme) { enabled in
@@ -372,6 +369,7 @@ private struct UsagePanel: View {
 }
 
 private struct ClassicUsagePanel: View {
+    @AppStorage("snackTheme") private var snackTheme = true
     @ObservedObject var model: UsageModel
     let language: CodexUsageLanguage
     @State private var isShowingResetConfirmation = false
@@ -396,6 +394,19 @@ private struct ClassicUsagePanel: View {
                 }
 
                 Spacer()
+
+                Menu {
+                    Picker("Theme", selection: $snackTheme) {
+                        Text("Classic").tag(false)
+                        Text("Monster").tag(true)
+                    }
+                } label: {
+                    Image(systemName: "paintpalette")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("Switch theme")
+                .accessibilityLabel("Switch theme")
 
                 if model.isBusy {
                     ProgressView()
