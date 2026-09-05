@@ -21,7 +21,7 @@ struct UsagePanel: View {
     let language: CodexUsageLanguage
     var snackTheme = true
     var onSizeChange: (CGSize) -> Void = { _ in }
-    var onThemeSelection: (Bool) -> Void = { _ in }
+    var onShowThemes: (NSView) -> Void = { _ in }
     var onReset: (String?) -> Void = { _ in }
     var onInstall: () -> Void = {}
 
@@ -72,22 +72,8 @@ struct UsagePanel: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Menu {
-                Picker(strings.appearance, selection: Binding(get: { snackTheme }, set: onThemeSelection)) {
-                    Text("Classic").tag(false)
-                    Text("Monster").tag(true)
-                }
-            } label: {
-                Image(systemName: "paintpalette")
-                    .font(.system(size: 14))
-                    .frame(width: 26, height: 26)
-                    .contentShape(Rectangle())
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help(strings.appearance)
-            .accessibilityLabel(strings.appearance)
+            ThemePicker(label: strings.appearance, onOpen: onShowThemes)
+                .frame(width: 26, height: 26)
         }
     }
 
