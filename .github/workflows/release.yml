@@ -169,5 +169,5 @@ jobs:
               "$archive.sha256" \
               --title "Codex Usage Bar $RELEASE_TAG" \
               --generate-notes \
-              --notes "This build is ad-hoc signed and not notarized. If macOS blocks it, right-click the app and select Open."
+              --notes "This build is ad-hoc signed and not notarized. If macOS blocks it, open System Settings > Privacy & Security and choose Open Anyway after attempting to launch the app from Applications."
           fi

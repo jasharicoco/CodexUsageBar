@@ -3,83 +3,36 @@ import SwiftUI
 import CodexUsageCore
 
 @main
-struct CodexUsageBarApp: App {
-    @StateObject private var model = UsageModel()
-    @StateObject private var updater = AppUpdateModel()
-    @AppStorage("snackTheme") private var snackTheme = true
-    private let language = CodexUsageLanguage.preferred()
-
-    var body: some Scene {
-        MenuBarExtra {
-            Group {
-                if snackTheme {
-                    UsagePanel(model: model, updater: updater, language: language)
-                } else {
-                    ClassicUsagePanel(model: model, updater: updater, language: language)
-                }
-            }
-        } label: {
-            Text(model.menuBarText + (updater.release == nil ? "" : " ↑"))
-                .monospacedDigit()
-                .onAppear {
-                    model.start()
-                    updater.start()
-                }
-        }
-        .menuBarExtraStyle(.window)
+struct CodexUsageBarApp {
+    @MainActor static func main() {
+        let application = NSApplication.shared
+        let controller = StatusBarController()
+        application.delegate = controller
+        application.setActivationPolicy(.accessory)
+        application.run()
+        withExtendedLifetime(controller) {}
     }
 }
 
-private struct UsagePanel: View {
-    @Environment(\.colorScheme) private var systemColorScheme
+struct UsagePanel: View {
+    static let width: CGFloat = 320
     @ObservedObject var model: UsageModel
     @ObservedObject var updater: AppUpdateModel
     let language: CodexUsageLanguage
+    var onSizeChange: (CGSize) -> Void = { _ in }
+    var onThemeChange: (Bool) -> Void = { _ in }
     @AppStorage("snackTheme") private var snackTheme = true
     @State private var isShowingResetConfirmation = false
     @State private var selectedResetCreditID: String?
 
-    private var strings: AppStrings {
-        AppStrings(language: language)
+    private var strings: AppStrings { AppStrings(language: language) }
+    private var accent: Color {
+        snackTheme ? Color(red: 0.65, green: 0.95, blue: 0.40) : .accentColor
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 16) {
-                CodexMark().frame(width: 18, height: 18)
-                    .help("Codex weekly usage")
-                Spacer()
-                Button { model.refresh() } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .disabled(model.isBusy)
-                .help("Refresh · automatically every minute")
-                .accessibilityLabel(strings.refresh)
-                Menu {
-                    Picker("Theme", selection: $snackTheme) {
-                        Text("Classic").tag(false)
-                        Text("Monster").tag(true)
-                    }
-                } label: {
-                    Image(systemName: "paintpalette")
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .help("Theme")
-                .accessibilityLabel("Theme")
-                Button { openCodex() } label: {
-                    Image(systemName: "arrow.up.forward.app")
-                }
-                .help(strings.openCodex)
-                .accessibilityLabel(strings.openCodex)
-                Button { NSApplication.shared.terminate(nil) } label: {
-                    Image(systemName: "power")
-                }
-                .help(strings.quit)
-                .accessibilityLabel(strings.quit)
-            }
-            .buttonStyle(.borderless)
-            .font(.system(size: 14))
+        VStack(alignment: .leading, spacing: 18) {
+            header
 
             if let snapshot = model.snapshot {
                 usageContent(snapshot)
@@ -95,15 +48,24 @@ private struct UsagePanel: View {
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Divider()
-            AppUpdateView(updater: updater, language: language)
+
+            Divider().opacity(0.6)
+            footer
         }
-        .padding(snackTheme ? 20 : 16)
-        .frame(width: 290)
+        .padding(20)
+        .frame(width: Self.width)
+        .fixedSize(horizontal: false, vertical: true)
         .background(snackTheme ? Color(red: 0.12, green: 0.08, blue: 0.20) : Color(nsColor: .windowBackgroundColor))
-        .foregroundStyle(snackTheme ? Color(red: 0.95, green: 0.91, blue: 1) : Color.primary)
-        .tint(snackTheme ? Color(red: 0.65, green: 0.95, blue: 0.40) : Color.accentColor)
-        .environment(\.colorScheme, snackTheme ? .dark : systemColorScheme)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .tint(accent)
+        .background {
+            GeometryReader { geometry in
+                Color.clear.preference(key: PanelSizeKey.self, value: geometry.size)
+            }
+        }
+        .onPreferenceChange(PanelSizeKey.self, perform: onSizeChange)
+        .onAppear { onThemeChange(snackTheme) }
+        .onChange(of: snackTheme, perform: onThemeChange)
         .alert(strings.confirmResetTitle, isPresented: $isShowingResetConfirmation) {
             Button(strings.cancel, role: .cancel) {}
             Button(strings.useReset, role: .destructive) {
@@ -114,396 +76,102 @@ private struct UsagePanel: View {
         }
     }
 
-    @ViewBuilder
-    private func usageContent(_ snapshot: UsageSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if snackTheme {
-                HStack {
-                    Spacer()
-                    VStack(spacing: 8) {
-                        SnackBuddy(remaining: snapshot.remainingPercent)
-                            .frame(width: 230, height: 150)
-                        Text(snapshot.remainingPercent >= 50 ? "Mmm. Stuffed with tokens." : snapshot.remainingPercent >= 20 ? "Got any more tokens?" : snapshot.remainingPercent > 0 ? "Hungry for tokens…" : "Dreaming of tokens…")
-                            .font(.system(size: 12, weight: .medium))
-                    }
-                    Spacer()
-                }
-                .padding(.vertical, 4)
-            }
-
-            HStack(alignment: .firstTextBaseline, spacing: 5) {
-                Text("\(snapshot.remainingPercent)")
-                    .help("Weekly usage remaining")
-                    .accessibilityLabel("\(snapshot.remainingPercent) percent weekly usage remaining")
-                    .font(.system(size: 40, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                Text(snackTheme ? "%" : strings.remainingSuffix)
-                    .font(.title3.weight(.medium))
+    private var header: some View {
+        HStack(spacing: 10) {
+            CodexMark().frame(width: 22, height: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Codex").font(.system(size: 14, weight: .semibold))
+                Text(strings.weeklyLimit)
+                    .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
-
-            ProgressView(value: Double(snapshot.remainingPercent), total: 100)
-                .tint(snackTheme ? Color(red: 0.65, green: 0.95, blue: 0.40) : progressColor(snapshot.remainingPercent))
-
-            HStack {
-                Image(systemName: "chart.pie")
-                    .help(strings.used(snapshot.usedPercent))
-                    .accessibilityLabel(strings.used(snapshot.usedPercent))
-                Spacer()
-                if let resetsAt = snapshot.resetsAt {
-                    Label(resetDate(resetsAt), systemImage: "clock.arrow.circlepath")
-                        .help(strings.resets(resetDate(resetsAt)))
+            Spacer()
+            Menu {
+                Picker(strings.appearance, selection: $snackTheme) {
+                    Text("Classic").tag(false)
+                    Text("Monster").tag(true)
                 }
+            } label: {
+                Image(systemName: "paintpalette")
+                    .font(.system(size: 14))
+                    .frame(width: 26, height: 26)
+                    .contentShape(Rectangle())
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
-            if let resetCredits = snapshot.resetCredits, resetCredits.availableCount > 0 {
-                resetCreditsContent(resetCredits)
-            }
-
-            if let resetNotice = model.resetNotice {
-                resetNoticeContent(resetNotice)
-            }
-
-
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help(strings.appearance)
+            .accessibilityLabel(strings.appearance)
         }
     }
 
-    private func resetCreditsContent(_ resetCredits: UsageResetCredits) -> some View {
+    private var footer: some View {
         HStack(spacing: 10) {
-            Image(systemName: "arrow.counterclockwise.circle.fill")
-                .font(.title3)
-                .foregroundStyle(.blue)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(strings.resetAvailable(resetCredits.availableCount))
-                    .font(.caption.weight(.semibold))
-
-                if let expiresAt = resetCredits.nextCredit?.expiresAt {
-                    Text(strings.resetExpires(expirationDate(expiresAt), count: resetCredits.availableCount))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Spacer(minLength: 6)
-
-            Button {
-                selectedResetCreditID = resetCredits.nextCredit?.id
-                isShowingResetConfirmation = true
-            } label: {
-                if model.isConsumingReset {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Text(strings.useReset)
-                }
+            AppUpdateView(updater: updater, language: language)
+            Spacer(minLength: 8)
+            Button { model.refresh() } label: {
+                Image(systemName: "arrow.clockwise")
+                    .rotationEffect(.degrees(model.isLoading ? 180 : 0))
+                    .animation(.easeInOut(duration: 0.4), value: model.isLoading)
             }
             .disabled(model.isBusy)
-            .controlSize(.small)
-        }
-        .padding(10)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
-    }
-
-    private func resetNoticeContent(_ notice: UsageResetNotice) -> some View {
-        Label(strings.resetNotice(notice), systemImage: resetNoticeIcon(notice))
-            .font(.caption)
-            .foregroundStyle(resetNoticeColor(notice))
-            .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private func resetNoticeIcon(_ notice: UsageResetNotice) -> String {
-        switch notice {
-        case .reset, .alreadyRedeemed:
-            return "checkmark.circle.fill"
-        case .nothingToReset, .noCredit, .unknown:
-            return "info.circle.fill"
-        case .failure:
-            return "exclamationmark.triangle.fill"
-        }
-    }
-
-    private func resetNoticeColor(_ notice: UsageResetNotice) -> Color {
-        switch notice {
-        case .reset, .alreadyRedeemed:
-            return .green
-        case .nothingToReset, .noCredit, .unknown:
-            return .secondary
-        case .failure:
-            return .orange
-        }
-    }
-
-    @ViewBuilder
-    private func issueContent(_ issue: UsageConnectionIssue) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(strings.issueTitle(issue), systemImage: issueIcon(issue))
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.orange)
-            Text(strings.issueMessage(issue))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack(spacing: 8) {
-                switch issue {
-                case .codexMissing:
-                    Button(strings.getCodex) {
-                        openCodexWebsite()
-                    }
-                case .signInRequired:
-                    Button(strings.openCodex) {
-                        openCodex()
-                    }
-                    Button(strings.copyCodexLogin) {
-                        copyToPasteboard("codex login")
-                    }
-                case .chatGPTAccountRequired:
-                    Button(strings.openCodex) {
-                        openCodex()
-                    }
-                    Button(strings.copySignInSteps) {
-                        copyToPasteboard("codex logout && codex login")
-                    }
-                case .unsupportedAccount, .generic:
-                    Button(strings.tryAgain) {
-                        model.refresh()
-                    }
-                }
+            .help(model.snapshot.map { strings.updated(updatedTime($0.fetchedAt)) + " · " + strings.minuteRefresh } ?? strings.refresh)
+            .accessibilityLabel(strings.refresh)
+            Button { NSApplication.shared.terminate(nil) } label: {
+                Image(systemName: "power")
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .padding(.top, 4)
+            .help(strings.quit)
+            .accessibilityLabel(strings.quit)
         }
+        .font(.system(size: 13))
+        .foregroundStyle(.secondary)
+        .buttonStyle(PanelButtonStyle())
     }
 
-    private func issueIcon(_ issue: UsageConnectionIssue) -> String {
-        switch issue {
-        case .codexMissing:
-            return "square.and.arrow.down"
-        case .signInRequired, .chatGPTAccountRequired:
-            return "person.crop.circle.badge.exclamationmark"
-        case .unsupportedAccount, .generic:
-            return "exclamationmark.triangle.fill"
-        }
-    }
-
-    private var loadingContent: some View {
-        HStack(spacing: 10) {
-            ProgressView()
-                .controlSize(.small)
-            Text(strings.readingUsage)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 12)
-    }
-
-    private func progressColor(_ remainingPercent: Int) -> Color {
-        switch remainingPercent {
-        case 50...:
-            return .green
-        case 20..<50:
-            return .orange
-        default:
-            return .red
-        }
-    }
-
-    private func resetDate(_ date: Date) -> String {
-        date.formatted(
-            Date.FormatStyle()
-                .weekday(.abbreviated)
-                .day()
-                .month(.abbreviated)
-                .hour()
-                .minute()
-                .locale(language.locale)
-        )
-    }
-
-    private func updatedTime(_ date: Date) -> String {
-        date.formatted(
-            Date.FormatStyle()
-                .hour()
-                .minute()
-                .locale(language.locale)
-        )
-    }
-
-    private func expirationDate(_ date: Date) -> String {
-        date.formatted(
-            Date.FormatStyle()
-                .day()
-                .month(.abbreviated)
-                .hour()
-                .minute()
-                .locale(language.locale)
-        )
-    }
-
-    private func openCodex() {
-        if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex") {
-            NSWorkspace.shared.openApplication(
-                at: appURL,
-                configuration: NSWorkspace.OpenConfiguration()
-            )
-        } else {
-            openCodexWebsite()
-        }
-    }
-
-    private func openCodexWebsite() {
-        if let webURL = URL(string: "https://chatgpt.com/codex") {
-            NSWorkspace.shared.open(webURL)
-        }
-    }
-
-    private func copyToPasteboard(_ text: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-    }
-}
-
-private struct ClassicUsagePanel: View {
-    @AppStorage("snackTheme") private var snackTheme = true
-    @ObservedObject var model: UsageModel
-    @ObservedObject var updater: AppUpdateModel
-    let language: CodexUsageLanguage
-    @State private var isShowingResetConfirmation = false
-    @State private var selectedResetCreditID: String?
-
-    private var strings: AppStrings {
-        AppStrings(language: language)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 10) {
-                CodexMark()
-                    .frame(width: 24, height: 24)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Codex")
-                        .font(.headline)
-                    Text(strings.weeklyLimit)
-                        .font(.caption)
+    private func usageContent(_ snapshot: UsageSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if snackTheme {
+                VStack(spacing: 4) {
+                    SnackBuddy(remaining: snapshot.remainingPercent)
+                        .frame(height: 138)
+                    Text(strings.monsterMood(snapshot.remainingPercent))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
-
-                Spacer()
-
-                Menu {
-                    Picker("Theme", selection: $snackTheme) {
-                        Text("Classic").tag(false)
-                        Text("Monster").tag(true)
-                    }
-                } label: {
-                    Image(systemName: "paintpalette")
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .help("Switch theme")
-                .accessibilityLabel("Switch theme")
-
-                if model.isBusy {
-                    ProgressView()
-                        .controlSize(.small)
-                }
+                .frame(maxWidth: .infinity)
+                .padding(.bottom, 2)
             }
 
-            if let snapshot = model.snapshot {
-                usageContent(snapshot)
-            } else if let connectionIssue = model.connectionIssue {
-                issueContent(connectionIssue)
-            } else {
-                loadingContent
-            }
-
-            if let connectionIssue = model.connectionIssue, model.snapshot != nil {
-                Label(strings.issueMessage(connectionIssue), systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Divider()
-
-            HStack {
-                Button {
-                    model.refresh()
-                } label: {
-                    Label(strings.refresh, systemImage: "arrow.clockwise")
-                }
-                .disabled(model.isBusy)
-
-                Spacer()
-
-                Button(strings.openCodex) {
-                    openCodex()
-                }
-
-                Button(strings.quit) {
-                    NSApplication.shared.terminate(nil)
-                }
-            }
-            .buttonStyle(.borderless)
-            .font(.caption)
-
-            Divider()
-            AppUpdateView(updater: updater, language: language)
-        }
-        .padding(16)
-        .frame(width: 340)
-        .alert(strings.confirmResetTitle, isPresented: $isShowingResetConfirmation) {
-            Button(strings.cancel, role: .cancel) {}
-            Button(strings.useReset, role: .destructive) {
-                model.consumeReset(creditId: selectedResetCreditID)
-            }
-        } message: {
-            Text(strings.confirmResetMessage)
-        }
-    }
-
-    @ViewBuilder
-    private func usageContent(_ snapshot: UsageSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 5) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("\(snapshot.remainingPercent)")
-                    .font(.system(size: 40, weight: .semibold, design: .rounded))
+                    .font(.system(size: 44, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                 Text(strings.remainingSuffix)
-                    .font(.title3.weight(.medium))
+                    .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(.secondary)
             }
 
-            ProgressView(value: Double(snapshot.remainingPercent), total: 100)
-                .tint(progressColor(snapshot.remainingPercent))
-
-            HStack {
-                Text(strings.used(snapshot.usedPercent))
-                Spacer()
-                if let resetsAt = snapshot.resetsAt {
-                    Text(strings.resets(resetDate(resetsAt)))
+            VStack(spacing: 8) {
+                ProgressView(value: Double(snapshot.remainingPercent), total: 100)
+                    .tint(snackTheme ? accent : progressColor(snapshot.remainingPercent))
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(strings.used(snapshot.usedPercent))
+                    Spacer(minLength: 0)
+                    if let resetsAt = snapshot.resetsAt {
+                        Label(resetDate(resetsAt), systemImage: "clock.arrow.circlepath")
+                            .help(strings.resets(resetDate(resetsAt)))
+                    }
                 }
+                .font(.system(size: 10.5))
+                .foregroundStyle(.secondary)
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
 
             if let resetCredits = snapshot.resetCredits, resetCredits.availableCount > 0 {
                 resetCreditsContent(resetCredits)
             }
-
             if let resetNotice = model.resetNotice {
                 resetNoticeContent(resetNotice)
             }
-
-            Text(strings.updated(updatedTime(snapshot.fetchedAt)))
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
         }
     }
 
@@ -518,9 +186,11 @@ private struct ClassicUsagePanel: View {
                     .font(.caption.weight(.semibold))
 
                 if let expiresAt = resetCredits.nextCredit?.expiresAt {
-                    Text(strings.resetExpires(expirationDate(expiresAt), count: resetCredits.availableCount))
+                    Text(strings.resetExpires(expiresAt.formatted(.dateTime.day().month(.abbreviated).locale(language.locale)), count: resetCredits.availableCount))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
+                        .help(strings.resetExpires(expirationDate(expiresAt), count: resetCredits.availableCount))
+                        .accessibilityLabel(strings.resetExpires(expirationDate(expiresAt), count: resetCredits.availableCount))
                 }
             }
 
@@ -540,8 +210,8 @@ private struct ClassicUsagePanel: View {
             .disabled(model.isBusy)
             .controlSize(.small)
         }
-        .padding(10)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+        .padding(12)
+        .background(.quaternary.opacity(0.65), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func resetNoticeContent(_ notice: UsageResetNotice) -> some View {
@@ -702,11 +372,39 @@ private struct ClassicUsagePanel: View {
     private func copyToPasteboard(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }
+}
+
+private struct PanelSizeKey: PreferenceKey {
+    static var defaultValue: CGSize = .zero
+    static func reduce(value: inout CGSize, nextValue: () -> CGSize) { value = nextValue() }
+}
+
+struct PanelButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .frame(minWidth: 24, minHeight: 24)
+            .contentShape(RoundedRectangle(cornerRadius: 6))
+            .background(configuration.isPressed ? Color.primary.opacity(0.08) : .clear,
+                        in: RoundedRectangle(cornerRadius: 6))
+            .opacity(configuration.isPressed ? 0.7 : 1)
     }
 }
 
 private struct AppStrings {
     let language: CodexUsageLanguage
+
+    var appearance: String { text("Utseende", "Appearance") }
+    var minuteRefresh: String { text("Uppdateras varje minut", "Refreshes every minute") }
+
+    func monsterMood(_ remaining: Int) -> String {
+        switch remaining {
+        case 50...: return text("Mmm. Mätt på tokens.", "Mmm. Stuffed with tokens.")
+        case 20..<50: return text("Har du fler tokens?", "Got any more tokens?")
+        case 1..<20: return text("Hungrig på tokens…", "Hungry for tokens…")
+        default: return text("Drömmer om tokens…", "Dreaming of tokens…")
+        }
+    }
 
     var weeklyLimit: String {
         text("Veckogräns", "Weekly limit")

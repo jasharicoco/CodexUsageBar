@@ -7,8 +7,8 @@ final class AppUpdateModel: ObservableObject {
     @Published private(set) var release: AppRelease?
     @Published private(set) var isChecking = false
     @Published private(set) var isInstalling = false
-    @Published private(set) var hasChecked = false
     @Published private(set) var errorMessage: String?
+    @Published private(set) var installationError: String?
     @Published var automaticChecks: Bool {
         didSet {
             UserDefaults.standard.set(automaticChecks, forKey: "automaticAppUpdateChecks")
@@ -49,7 +49,6 @@ final class AppUpdateModel: ObservableObject {
             do {
                 guard let version = AppVersion(currentVersion) else { throw AppUpdateError.invalidBundle }
                 release = try await client.latest(after: version)
-                hasChecked = true
             } catch {
                 // Preserve an already discovered update when offline or rate limited.
                 errorMessage = error.localizedDescription
@@ -61,6 +60,7 @@ final class AppUpdateModel: ObservableObject {
         guard let release, !isInstalling, !isChecking else { return }
         isInstalling = true
         errorMessage = nil
+        installationError = nil
         let installedApp = Bundle.main.bundleURL.resolvingSymlinksInPath()
         let helper = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/UpdateInstaller")
         Task {
@@ -109,9 +109,13 @@ final class AppUpdateModel: ObservableObject {
                 }
                 NSApplication.shared.terminate(nil)
             } catch {
-                errorMessage = error.localizedDescription
+                installationError = error.localizedDescription
                 isInstalling = false
             }
         }
+    }
+
+    func dismissInstallationError() {
+        installationError = nil
     }
 }

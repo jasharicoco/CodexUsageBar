@@ -11,62 +11,46 @@ struct AppUpdateView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let release = updater.release {
-                Label(text("Version \(release.version.string) finns", "Version \(release.version.string) available"),
-                      systemImage: "arrow.down.circle.fill")
-                    .font(.caption.weight(.semibold))
-                HStack {
-                    Button(text("Uppdatera och starta om", "Update and restart")) { updater.install() }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(updater.isInstalling || updater.isChecking)
-                    Spacer(minLength: 0)
-                    Link(text("Nyheter", "What’s new"), destination: release.pageURL)
+        HStack(spacing: 4) {
+            Text("v\(updater.currentVersion)")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.tertiary)
+                .help(text("Appversion · högerklicka för uppdateringsalternativ", "App version · right-click for update options"))
+                .contextMenu {
+                    Button(text("Sök appuppdatering", "Check for app updates")) { updater.check() }
+                        .disabled(updater.isChecking || updater.isInstalling)
+                    Toggle(text("Sök automatiskt", "Check automatically"), isOn: $updater.automaticChecks)
+                    Link(text("Releaser på GitHub", "Releases on GitHub"), destination: AppRelease.releasesURL)
+                    if let error = updater.errorMessage { Text(error) }
                 }
-                .controlSize(.small)
-            }
 
             if updater.isInstalling {
-                HStack(spacing: 6) {
-                    ProgressView().controlSize(.small)
-                    Text(text("Hämtar och förbereder uppdatering…", "Downloading and preparing update…"))
-                        .fixedSize(horizontal: false, vertical: true)
+                ProgressView()
+                    .controlSize(.mini)
+                    .frame(width: 24, height: 24)
+                    .help(text("Hämtar och installerar uppdatering…", "Downloading and installing update…"))
+                    .accessibilityLabel(text("Installerar uppdatering", "Installing update"))
+            } else if let release = updater.release {
+                Button { updater.install() } label: {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.tint)
                 }
-            } else {
-                HStack {
-                    Text("v\(updater.currentVersion)")
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    if updater.isChecking {
-                        ProgressView().controlSize(.small)
-                        Text(text("Söker…", "Checking…"))
-                    } else {
-                        Button(text("Sök appuppdatering", "Check for app updates")) { updater.check() }
-                            .buttonStyle(.borderless)
-                    }
-                    Menu {
-                        Toggle(text("Sök automatiskt", "Check automatically"), isOn: $updater.automaticChecks)
-                        Link(text("Releaser på GitHub", "Releases on GitHub"), destination: AppRelease.releasesURL)
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                    }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
-                    .accessibilityLabel(text("Inställningar för appuppdateringar", "App update settings"))
-                }
-            }
-
-            if let error = updater.errorMessage {
-                Text(error)
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-                Link(text("Uppdatera manuellt via GitHub", "Update manually through GitHub"),
-                     destination: updater.release?.pageURL ?? AppRelease.releasesURL)
-            } else if updater.hasChecked && updater.release == nil && !updater.isChecking {
-                Text(text("Du har den senaste versionen", "You’re up to date"))
-                    .foregroundStyle(.secondary)
+                .disabled(updater.isChecking)
+                .help(text("Installera \(release.version.string) och starta om", "Install \(release.version.string) and restart"))
+                .accessibilityLabel(text("Uppdatera till \(release.version.string) och starta om", "Update to \(release.version.string) and restart"))
             }
         }
-        .font(.caption2)
+        .buttonStyle(PanelButtonStyle())
+        .alert(text("Uppdateringen kunde inte installeras", "The update could not be installed"),
+               isPresented: Binding(get: { updater.installationError != nil }, set: { if !$0 { updater.dismissInstallationError() } })) {
+            Button(text("Försök igen", "Try again")) { updater.install() }
+            Button(text("Öppna releasen", "Open release")) {
+                NSWorkspace.shared.open(updater.release?.pageURL ?? AppRelease.releasesURL)
+            }
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(updater.installationError ?? "")
+        }
     }
 }

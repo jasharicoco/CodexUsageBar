@@ -30,7 +30,7 @@ The app also checks this project's public GitHub release endpoint at startup and
 every six hours, unless automatic app update checks are turned off. Manual checks
 use the same endpoint. GitHub receives the usual connection information, including
 the IP address and a `CodexUsageBar` user agent; no Codex account or usage data is
-sent. Clicking **Update and restart** downloads the release ZIP and its checksum
+sent. Clicking the download symbol beside the version downloads the release ZIP and its checksum
 from GitHub and its asset delivery service. No GitHub login is required.
 
 ## Storage
